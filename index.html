@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>半導体エッチング工程 CO₂e 計算ツール</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --bg-secondary: #f5f5f3; --bg-tertiary: #eeecea;
+    --text-primary: #1a1a18; --text-secondary: #5f5e5a; --text-muted: #888780;
+    --border: rgba(0,0,0,0.12); --border-md: rgba(0,0,0,0.22);
+    --radius-md: 8px; --radius-lg: 12px;
+    --blue: #378ADD; --blue-light: #E6F1FB; --blue-dark: #185FA5;
+    --teal: #1D9E75; --teal-light: #E1F5EE; --teal-dark: #085041;
+    --coral: #D85A30; --coral-light: #FAECE7; --coral-dark: #993C1D;
+    --amber: #EF9F27; --amber-light: #FAEEDA; --amber-dark: #854F0B;
+    --red: #A32D2D; --green-text: #0F6E56;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a; --bg-secondary: #252522; --bg-tertiary: #2e2e2b;
+      --text-primary: #f0ede8; --text-secondary: #b4b2a9; --text-muted: #888780;
+      --border: rgba(255,255,255,0.12); --border-md: rgba(255,255,255,0.22);
+      --blue-light: #0c447c; --blue-dark: #85b7eb;
+      --teal-light: #085041; --teal-dark: #9FE1CB;
+      --amber-light: #412402; --amber-dark: #FAC775;
+    }
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif; background: var(--bg-tertiary); color: var(--text-primary); min-height: 100vh; padding: 24px 16px; }
+  .container { max-width: 820px; margin: 0 auto; }
+  h1 { font-size: 20px; font-weight: 500; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: var(--text-secondary); margin-bottom: 24px; }
+  .tab-bar { display: flex; gap: 4px; border-bottom: 0.5px solid var(--border); margin-bottom: 20px; }
+  .tab { padding: 9px 18px; font-size: 13px; cursor: pointer; color: var(--text-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; user-select: none; }
+  .tab:hover { color: var(--text-primary); }
+  .tab.active { color: var(--text-primary); border-bottom-color: var(--blue); font-weight: 500; }
+  .section-label { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 10px; margin-top: 20px; }
+  .section-label:first-child { margin-top: 0; }
+  .card { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 12px; }
+  .input-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .input-row:last-child { margin-bottom: 0; }
+  .input-label { font-size: 13px; color: var(--text-secondary); flex: 1; min-width: 0; }
+  input[type="number"] { width: 120px; padding: 7px 10px; font-size: 14px; border: 0.5px solid var(--border-md); border-radius: var(--radius-md); background: var(--bg-secondary); color: var(--text-primary); outline: none; }
+  input[type="number"]:focus { border-color: var(--blue); }
+  input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--blue); }
+  .input-unit { font-size: 12px; color: var(--text-muted); width: 105px; text-align: right; flex-shrink: 0; }
+  .divider { border: none; border-top: 0.5px solid var(--border); margin: 14px 0; }
+  .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
+  .metric-card { background: var(--bg-secondary); border-radius: var(--radius-md); padding: 14px 12px; text-align: center; }
+  .metric-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .metric-value { font-size: 22px; font-weight: 500; color: var(--text-primary); }
+  .metric-unit { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+  .highlight-card { background: var(--teal-light); border: 0.5px solid rgba(29,158,117,0.3); border-radius: var(--radius-lg); padding: 18px 20px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; }
+  .breakdown-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .breakdown-row:last-child { margin-bottom: 0; }
+  .breakdown-lbl { font-size: 13px; color: var(--text-secondary); width: 54px; }
+  .bar-bg { flex: 1; height: 8px; background: var(--bg-secondary); border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+  .breakdown-pct { font-size: 13px; font-weight: 500; width: 46px; text-align: right; }
+  .badge { display: inline-block; font-size: 11px; padding: 3px 9px; border-radius: var(--radius-md); font-weight: 500; }
+  .badge-blue { background: var(--blue-light); color: var(--blue-dark); }
+  .badge-amber { background: var(--amber-light); color: var(--amber-dark); }
+  .chart-wrap { position: relative; width: 100%; }
+  .h220 { height: 220px; } .h260 { height: 260px; } .h200 { height: 200px; }
+  .range-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .range-header span { font-size: 13px; color: var(--text-secondary); }
+  .range-val { font-size: 15px; font-weight: 500; color: var(--text-primary) !important; }
+  .legend-row { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink:0; }
+  .eq-sub { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 12px; }
+  .eq-col-label { font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+  .eq-input-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .eq-input-row:last-child { margin-bottom: 0; }
+  .eq-input-lbl { font-size: 12px; color: var(--text-secondary); flex: 1; }
+  input.sm { width: 72px; font-size: 13px; padding: 5px 8px; }
+  .eq-unit { font-size: 11px; color: var(--text-muted); }
+  .delta-pos { color: #A32D2D !important; }
+  .delta-neg { color: #0F6E56 !important; }
+  @media (max-width: 540px) {
+    .grid-4 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .input-unit { display: none; }
+    .highlight-card { flex-direction: column; gap: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>半導体エッチング工程 CO₂e 計算ツール</h1>
+  <p class="subtitle">電力・ガス・水の消費量と処理枚数からウェーハ1枚あたりのCO₂排出量を算出</p>
+
+  <div class="tab-bar">
+    <div class="tab active" onclick="switchTab('input')">入力設定</div>
+    <div class="tab" onclick="switchTab('result')">計算結果</div>
+    <div class="tab" onclick="switchTab('equipment')">装置構成</div>
+  </div>
+
+  <!-- INPUT TAB -->
+  <div id="tab-input">
+    <div class="section-label">年間エネルギー・資源消費量</div>
+    <div class="card">
+      <div class="input-row">
+        <span class="input-label">⚡ 電力消費量</span>
+        <input type="number" id="elec" value="1200000" step="10000" oninput="calc()">
+        <span class="input-unit">kWh / 年</span>
+      </div>
+      <div class="input-row">
+        <span class="input-label">🔥 PFC / 特殊ガス排出量</span>
+        <input type="number" id="gas" value="5000" step="100" oninput="calc()">
+        <span class="input-unit">kg-CO₂e / 年</span>
+      </div>
+      <div class="input-row">
+        <span class="input-label">💧 超純水使用量</span>
+        <input type="number" id="water" value="80000" step="1000" oninput="calc()">
+        <span class="input-unit">m³ / 年</span>
+      </div>
+    </div>
+
+    <div class="section-label">排出係数</div>
+    <div class="card">
+      <div class="input-row">
+        <span class="input-label">電力排出係数（日本 電力会社標準）</span>
+        <input type="number" id="elecef" value="0.434" step="0.001" oninput="calc()">
+        <span class="input-unit">kg-CO₂e / kWh</span>
+      </div>
+      <div class="input-row">
+        <span class="input-label">超純水製造排出係数</span>
+        <input type="number" id="wateref" value="0.52" step="0.01" oninput="calc()">
+        <span class="input-unit">kg-CO₂e / m³</span>
+      </div>
+    </div>
+
+    <div class="section-label">年間処理枚数</div>
+    <div class="card">
+      <div class="input-row">
+        <span class="input-label">年間総処理枚数（ウェーハ）</span>
+        <input type="number" id="wafers" value="500000" step="10000" oninput="calc()">
+        <span class="input-unit">枚 / 年</span>
+      </div>
+    </div>
+
+    <div class="section-label">排出係数の参考値</div>
+    <div class="card">
+      <table style="width:100%;font-size:12px;border-collapse:collapse;">
+        <thead><tr style="color:var(--text-muted);text-align:left;">
+          <th style="padding:4px 8px 8px 0">項目</th>
+          <th style="padding:4px 8px 8px 0">係数</th>
+          <th style="padding:4px 0 8px 0">備考</th>
+        </tr></thead>
+        <tbody style="color:var(--text-secondary);">
+          <tr><td style="padding:5px 8px 5px 0;border-top:0.5px solid var(--border)">日本 電力（全国平均）</td><td style="padding:5px 8px 5px 0">0.434</td><td>kg-CO₂e/kWh (2023年度)</td></tr>
+          <tr><td style="padding:5px 8px 5px 0;border-top:0.5px solid var(--border)">日本 電力（再エネ100%）</td><td style="padding:5px 8px 5px 0">0.000</td><td>CO₂フリー電力</td></tr>
+          <tr><td style="padding:5px 8px 5px 0;border-top:0.5px solid var(--border)">超純水（製造含む）</td><td style="padding:5px 8px 5px 0">0.4〜0.6</td><td>kg-CO₂e/m³</td></tr>
+          <tr><td style="padding:5px 8px 5px 0;border-top:0.5px solid var(--border)">CF₄ガス (GWP100)</td><td style="padding:5px 8px 5px 0">6,500</td><td>AR6基準</td></tr>
+          <tr><td style="padding:5px 8px 5px 0;border-top:0.5px solid var(--border)">C₂F₆ガス (GWP100)</td><td style="padding:5px 8px 5px 0">12,400</td><td>AR6基準</td></tr>
+          <tr><td style="padding:5px 8px 5px 0;border-top:0.5px solid var(--border)">SF₆ガス (GWP100)</td><td style="padding:5px 8px 5px 0">23,500</td><td>AR6基準</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RESULT TAB -->
+  <div id="tab-result" style="display:none">
+    <div class="grid-4" style="margin-bottom:16px">
+      <div class="metric-card">
+        <div class="metric-label">電力由来 CO₂e</div>
+        <div class="metric-value" id="r-elec">—</div>
+        <div class="metric-unit">t-CO₂e / 年</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">ガス由来 CO₂e</div>
+        <div class="metric-value" id="r-gas">—</div>
+        <div class="metric-unit">t-CO₂e / 年</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">水由来 CO₂e</div>
+        <div class="metric-value" id="r-water">—</div>
+        <div class="metric-unit">t-CO₂e / 年</div>
+      </div>
+      <div class="metric-card" style="background:var(--blue-light);">
+        <div class="metric-label" style="color:var(--blue-dark)">合計 CO₂e</div>
+        <div class="metric-value" id="r-total" style="color:var(--blue-dark)">—</div>
+        <div class="metric-unit" style="color:var(--blue-dark)">t-CO₂e / 年</div>
+      </div>
+    </div>
+
+    <div class="highlight-card">
+      <div>
+        <div style="font-size:13px;color:var(--teal-dark);margin-bottom:6px">ウェーハ 1枚あたり CO₂e</div>
+        <div style="font-size:36px;font-weight:500;color:var(--teal-dark)" id="r-perwafer">—</div>
+        <div style="font-size:12px;color:var(--green-text);margin-top:4px">g-CO₂e / 枚</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:12px;color:var(--green-text);margin-bottom:4px">kg-CO₂e / 枚</div>
+        <div style="font-size:24px;font-weight:500;color:var(--teal-dark)" id="r-perwaferkg">—</div>
+        <div style="font-size:12px;color:var(--green-text);margin-top:4px" id="r-annual-wafers">—</div>
+      </div>
+    </div>
+
+    <div class="section-label">排出源の内訳</div>
+    <div class="card">
+      <div class="breakdown-row">
+        <span class="breakdown-lbl">電力</span>
+        <div class="bar-bg"><div class="bar-fill" id="bar-elec" style="background:var(--blue);width:0%"></div></div>
+        <span class="breakdown-pct" id="pct-elec">—</span>
+        <span style="font-size:12px;color:var(--text-muted);width:80px;text-align:right" id="abs-elec">—</span>
+      </div>
+      <div class="breakdown-row">
+        <span class="breakdown-lbl">ガス</span>
+        <div class="bar-bg"><div class="bar-fill" id="bar-gas" style="background:var(--coral);width:0%"></div></div>
+        <span class="breakdown-pct" id="pct-gas">—</span>
+        <span style="font-size:12px;color:var(--text-muted);width:80px;text-align:right" id="abs-gas">—</span>
+      </div>
+      <div class="breakdown-row">
+        <span class="breakdown-lbl">超純水</span>
+        <div class="bar-bg"><div class="bar-fill" id="bar-water" style="background:var(--teal);width:0%"></div></div>
+        <span class="breakdown-pct" id="pct-water">—</span>
+        <span style="font-size:12px;color:var(--text-muted);width:80px;text-align:right" id="abs-water">—</span>
+      </div>
+    </div>
+
+    <div class="section-label">排出源構成</div>
+    <div class="card">
+      <div class="legend-row">
+        <span class="legend-item"><span class="legend-dot" style="background:var(--blue)"></span>電力</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--coral)"></span>ガス</span>
+        <span class="legend-item"><span class="legend-dot" style="background:var(--teal)"></span>超純水</span>
+      </div>
+      <div class="chart-wrap h220">
+        <canvas id="pieChart" role="img" aria-label="CO2e排出源構成の円グラフ">電力・ガス・水の排出割合</canvas>
+      </div>
+    </div>
+
+    <div class="section-label">計算式の内訳</div>
+    <div class="card">
+      <table style="width:100%;font-size:13px;border-collapse:collapse;color:var(--text-secondary);">
+        <tr style="border-bottom:0.5px solid var(--border)">
+          <th style="padding:6px 0;text-align:left;font-weight:500;color:var(--text-primary)">排出源</th>
+          <th style="padding:6px 0;text-align:right;font-weight:500;color:var(--text-primary)">計算式</th>
+          <th style="padding:6px 0;text-align:right;font-weight:500;color:var(--text-primary)">CO₂e (t)</th>
+        </tr>
+        <tr style="border-bottom:0.5px solid var(--border)">
+          <td style="padding:8px 0">電力</td>
+          <td style="padding:8px 0;text-align:right;font-size:12px" id="formula-elec">—</td>
+          <td style="padding:8px 0;text-align:right;font-weight:500" id="table-elec">—</td>
+        </tr>
+        <tr style="border-bottom:0.5px solid var(--border)">
+          <td style="padding:8px 0">ガス</td>
+          <td style="padding:8px 0;text-align:right;font-size:12px" id="formula-gas">—</td>
+          <td style="padding:8px 0;text-align:right;font-weight:500" id="table-gas">—</td>
+        </tr>
+        <tr style="border-bottom:0.5px solid var(--border)">
+          <td style="padding:8px 0">超純水</td>
+          <td style="padding:8px 0;text-align:right;font-size:12px" id="formula-water">—</td>
+          <td style="padding:8px 0;text-align:right;font-weight:500" id="table-water">—</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;font-weight:500;color:var(--text-primary)">合計</td>
+          <td style="padding:8px 0;text-align:right;font-size:12px">÷ 年間処理枚数</td>
+          <td style="padding:8px 0;text-align:right;font-weight:500;color:var(--blue-dark)" id="table-total">—</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- EQUIPMENT TAB -->
+  <div id="tab-equipment" style="display:none">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">
+      プロセス時間の長い装置（高排出）と短い装置（低排出）の割合が、ウェーハ1枚あたりCO₂eに与える影響を可視化します。
+    </p>
+    <div class="card">
+      <div class="range-header">
+        <span>長時間プロセス装置の割合</span>
+        <span class="range-val" id="longpct-label">40%</span>
+      </div>
+      <input type="range" min="0" max="100" value="40" id="longpct" oninput="updateEquip()" style="width:100%;margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted)">
+        <span>短時間のみ (0%)</span><span>長時間のみ (100%)</span>
+      </div>
+      <hr class="divider">
+      <div class="eq-sub">
+        <div>
+          <div class="eq-col-label"><span class="badge badge-amber">長時間プロセス装置</span></div>
+          <div class="eq-input-row">
+            <span class="eq-input-lbl">相対消費電力</span>
+            <input type="number" class="sm" id="long-power" value="2.5" step="0.1" oninput="updateEquip()">
+            <span class="eq-unit">倍</span>
+          </div>
+          <div class="eq-input-row">
+            <span class="eq-input-lbl">プロセス時間</span>
+            <input type="number" class="sm" id="long-time" value="90" step="5" oninput="updateEquip()">
+            <span class="eq-unit">秒/枚</span>
+          </div>
+        </div>
+        <div>
+          <div class="eq-col-label"><span class="badge badge-blue">短時間プロセス装置</span></div>
+          <div class="eq-input-row">
+            <span class="eq-input-lbl">相対消費電力</span>
+            <input type="number" class="sm" id="short-power" value="1.0" step="0.1" oninput="updateEquip()">
+            <span class="eq-unit">倍</span>
+          </div>
+          <div class="eq-input-row">
+            <span class="eq-input-lbl">プロセス時間</span>
+            <input type="number" class="sm" id="short-time" value="30" step="5" oninput="updateEquip()">
+            <span class="eq-unit">秒/枚</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="metric-card">
+        <div class="metric-label">加重平均 CO₂e / 枚</div>
+        <div class="metric-value" id="eq-perwafer">—</div>
+        <div class="metric-unit">g-CO₂e / 枚</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">基準比 増減（短時間100%との差）</div>
+        <div class="metric-value" id="eq-delta">—</div>
+        <div class="metric-unit">g-CO₂e / 枚</div>
+      </div>
+    </div>
+
+    <div class="section-label">装置構成比率 vs CO₂e / 枚</div>
+    <div class="card">
+      <div class="legend-row">
+        <span class="legend-item"><span class="legend-dot" style="background:#378ADD"></span>CO₂e/枚の推移</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#D85A30;border-radius:50%"></span>現在の設定値</span>
+      </div>
+      <div class="chart-wrap h260">
+        <canvas id="eqChart" role="img" aria-label="装置構成比率とCO2e/枚の関係グラフ">長時間装置割合とCO2排出量の関係</canvas>
+      </div>
+    </div>
+
+    <div class="section-label">装置タイプ別 CO₂e 貢献量（現在 vs 比率逆転）</div>
+    <div class="card">
+      <div class="legend-row">
+        <span class="legend-item"><span class="legend-dot" style="background:#EF9F27"></span>長時間装置の寄与</span>
+        <span class="legend-item"><span class="legend-dot" style="background:#378ADD"></span>短時間装置の寄与</span>
+      </div>
+      <div class="chart-wrap h200">
+        <canvas id="contribChart" role="img" aria-label="装置タイプ別CO2e貢献量の積み上げ棒グラフ">装置別CO2e貢献量比較</canvas>
+      </div>
+    </div>
+
+    <div class="section-label">削減シナリオ比較</div>
+    <div class="card">
+      <table style="width:100%;font-size:13px;border-collapse:collapse;color:var(--text-secondary);">
+        <thead><tr style="border-bottom:0.5px solid var(--border);color:var(--text-primary)">
+          <th style="padding:6px 0;text-align:left;font-weight:500">シナリオ</th>
+          <th style="padding:6px 0;text-align:right;font-weight:500">長時間装置割合</th>
+          <th style="padding:6px 0;text-align:right;font-weight:500">CO₂e/枚 (g)</th>
+          <th style="padding:6px 0;text-align:right;font-weight:500">基準比</th>
+        </tr></thead>
+        <tbody id="scenario-table"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let pieChart, eqChart, contribChart;
+let basePwPerWafer = 0;
+
+function v(id) { return parseFloat(document.getElementById(id).value) || 0; }
+function fmt(n, d) { d = d === undefined ? 1 : d; return isNaN(n) ? '—' : n.toFixed(d); }
+function fmtN(n) { return isNaN(n) ? '—' : n.toLocaleString(); }
+
+function calc() {
+  var elec = v('elec'), gas = v('gas'), water = v('water');
+  var elecEF = v('elecef'), waterEF = v('wateref');
+  var wafers = v('wafers');
+
+  var co2Elec = elec * elecEF / 1000;
+  var co2Gas = gas / 1000;
+  var co2Water = water * waterEF / 1000;
+  var total = co2Elec + co2Gas + co2Water;
+  var perWaferKg = wafers > 0 ? total * 1000 / wafers : 0;
+  var perWaferG = perWaferKg * 1000;
+  basePwPerWafer = perWaferG;
+
+  document.getElementById('r-elec').textContent = fmt(co2Elec);
+  document.getElementById('r-gas').textContent = fmt(co2Gas);
+  document.getElementById('r-water').textContent = fmt(co2Water);
+  document.getElementById('r-total').textContent = fmt(total);
+  document.getElementById('r-perwafer').textContent = fmt(perWaferG, 2);
+  document.getElementById('r-perwaferkg').textContent = fmt(perWaferKg, 5);
+  document.getElementById('r-annual-wafers').textContent = '年間 ' + fmtN(wafers) + ' 枚処理';
+
+  var pElec = total > 0 ? co2Elec / total * 100 : 0;
+  var pGas  = total > 0 ? co2Gas / total * 100 : 0;
+  var pWater= total > 0 ? co2Water / total * 100 : 0;
+
+  document.getElementById('bar-elec').style.width = pElec.toFixed(1) + '%';
+  document.getElementById('bar-gas').style.width  = pGas.toFixed(1) + '%';
+  document.getElementById('bar-water').style.width= pWater.toFixed(1) + '%';
+  document.getElementById('pct-elec').textContent = pElec.toFixed(1) + '%';
+  document.getElementById('pct-gas').textContent  = pGas.toFixed(1) + '%';
+  document.getElementById('pct-water').textContent= pWater.toFixed(1) + '%';
+  document.getElementById('abs-elec').textContent = fmt(co2Elec) + ' t';
+  document.getElementById('abs-gas').textContent  = fmt(co2Gas) + ' t';
+  document.getElementById('abs-water').textContent= fmt(co2Water) + ' t';
+
+  document.getElementById('formula-elec').textContent = fmtN(elec) + ' kWh × ' + elecEF + ' / 1,000';
+  document.getElementById('formula-gas').textContent  = fmtN(gas) + ' kg-CO₂e / 1,000';
+  document.getElementById('formula-water').textContent= fmtN(water) + ' m³ × ' + waterEF + ' / 1,000';
+  document.getElementById('table-elec').textContent = fmt(co2Elec) + ' t';
+  document.getElementById('table-gas').textContent  = fmt(co2Gas) + ' t';
+  document.getElementById('table-water').textContent= fmt(co2Water) + ' t';
+  document.getElementById('table-total').textContent= fmt(perWaferG, 2) + ' g/枚';
+
+  if (pieChart) { pieChart.data.datasets[0].data = [co2Elec, co2Gas, co2Water]; pieChart.update(); }
+  if (eqChart) updateEquip();
+}
+
+function updateEquip() {
+  var longPct  = v('longpct'), shortPct = 100 - longPct;
+  var longPow  = v('long-power'), shortPow = v('short-power');
+  var longTime = v('long-time'), shortTime = v('short-time');
+
+  document.getElementById('longpct-label').textContent = Math.round(longPct) + '%';
+
+  var longWeight  = (longPct / 100) * longPow * longTime;
+  var shortWeight = (shortPct / 100) * shortPow * shortTime;
+  var refWeight   = shortPow * shortTime;
+  var totalWeight = longWeight + shortWeight;
+
+  var base = basePwPerWafer > 0 ? basePwPerWafer : 100;
+  var ratio = refWeight > 0 ? totalWeight / refWeight : 1;
+  var adj   = base * ratio;
+  var delta = adj - base;
+
+  document.getElementById('eq-perwafer').textContent = fmt(adj, 2);
+  var de = document.getElementById('eq-delta');
+  de.textContent = (delta >= 0 ? '+' : '') + fmt(delta, 2);
+  de.className = 'metric-value ' + (delta > 0.01 ? 'delta-pos' : delta < -0.01 ? 'delta-neg' : '');
+
+  var labels = [], dataAdj = [];
+  for (var p = 0; p <= 100; p += 5) {
+    labels.push(p + '%');
+    var lw = (p / 100) * longPow * longTime;
+    var sw = ((100 - p) / 100) * shortPow * shortTime;
+    dataAdj.push(parseFloat((base * ((lw + sw) / (refWeight > 0 ? refWeight : 1))).toFixed(3)));
+  }
+  if (eqChart) {
+    var curIdx = Math.round(longPct / 5);
+    eqChart.data.labels = labels;
+    eqChart.data.datasets[0].data = dataAdj;
+    eqChart.data.datasets[1].data = labels.map(function(_, i){ return i === curIdx ? dataAdj[i] : null; });
+    eqChart.update();
+  }
+  if (contribChart) {
+    var lc  = base * longWeight  / (refWeight > 0 ? refWeight : 1);
+    var sc  = base * shortWeight / (refWeight > 0 ? refWeight : 1);
+    var lc2 = base * ((100 - longPct) / 100) * longPow * longTime / (refWeight > 0 ? refWeight : 1);
+    var sc2 = base * (longPct / 100) * shortPow * shortTime / (refWeight > 0 ? refWeight : 1);
+    contribChart.data.labels = ['現在 (長' + Math.round(longPct) + '%)', '比率逆転 (長' + Math.round(100-longPct) + '%)'];
+    contribChart.data.datasets[0].data = [parseFloat(lc.toFixed(3)), parseFloat(lc2.toFixed(3))];
+    contribChart.data.datasets[1].data = [parseFloat(sc.toFixed(3)), parseFloat(sc2.toFixed(3))];
+    contribChart.update();
+  }
+
+  var scenarios = [
+    {name:'短時間装置のみ', pct:0},
+    {name:'25% 長時間', pct:25},
+    {name:'現在の設定', pct:longPct, current:true},
+    {name:'50% 長時間', pct:50},
+    {name:'75% 長時間', pct:75},
+    {name:'長時間装置のみ', pct:100}
+  ];
+  var tbody = document.getElementById('scenario-table');
+  tbody.innerHTML = scenarios.map(function(s){
+    var lw2 = (s.pct/100)*longPow*longTime;
+    var sw2 = ((100-s.pct)/100)*shortPow*shortTime;
+    var co2 = base * ((lw2+sw2)/(refWeight>0?refWeight:1));
+    var diff = co2 - base;
+    var pctDiff = base > 0 ? diff/base*100 : 0;
+    var hl = s.current ? 'background:rgba(55,138,221,0.1);' : '';
+    var dc = diff > 0.01 ? 'color:#A32D2D' : diff < -0.01 ? 'color:#0F6E56' : 'color:var(--text-muted)';
+    return '<tr style="border-bottom:0.5px solid var(--border);' + hl + '">'
+      + '<td style="padding:7px 0">' + s.name + (s.current?' ★':'') + '</td>'
+      + '<td style="padding:7px 0;text-align:right">' + Math.round(s.pct) + '%</td>'
+      + '<td style="padding:7px 0;text-align:right;font-weight:500">' + fmt(co2,2) + '</td>'
+      + '<td style="padding:7px 0;text-align:right;' + dc + '">' + (diff>=0?'+':'') + fmt(pctDiff,1) + '%</td>'
+      + '</tr>';
+  }).join('');
+}
+
+function switchTab(t) {
+  ['input','result','equipment'].forEach(function(name, i){
+    document.getElementById('tab-'+name).style.display = name===t ? '' : 'none';
+    document.querySelectorAll('.tab')[i].classList.toggle('active', name===t);
+  });
+  if (t === 'result' && !pieChart) initPie();
+  if (t === 'equipment' && !eqChart) initEqCharts();
+}
+
+function initPie() {
+  var elec  = v('elec') * v('elecef') / 1000;
+  var gas   = v('gas') / 1000;
+  var water = v('water') * v('wateref') / 1000;
+  pieChart = new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: { labels: ['電力','ガス','超純水'],
+      datasets: [{ data:[elec,gas,water], backgroundColor:['#378ADD','#D85A30','#1D9E75'], borderWidth:0, hoverOffset:6 }] },
+    options: { responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins: { legend: { display:true, position:'right', labels:{font:{size:12},padding:16,boxWidth:12,boxHeight:12} },
+        tooltip: { callbacks:{ label: function(ctx){
+          var sum = ctx.dataset.data.reduce(function(a,b){return a+b;},0);
+          return ' '+ctx.label+': '+ctx.parsed.toFixed(1)+' t ('+( sum>0?(ctx.parsed/sum*100).toFixed(1):'0.0')+'%)';
+        }}}
+      }
+    }
+  });
+}
+
+function initEqCharts() {
+  var base = basePwPerWafer > 0 ? basePwPerWafer : 100;
+  var longPow = v('long-power'), shortPow = v('short-power');
+  var longTime = v('long-time'), shortTime = v('short-time');
+  var refWeight = shortPow * shortTime;
+  var longPct = v('longpct');
+
+  var labels = [], dataAdj = [];
+  for (var p = 0; p <= 100; p += 5) {
+    labels.push(p + '%');
+    var lw = (p/100)*longPow*longTime, sw = ((100-p)/100)*shortPow*shortTime;
+    dataAdj.push(parseFloat((base*((lw+sw)/(refWeight>0?refWeight:1))).toFixed(3)));
+  }
+  var curIdx = Math.round(longPct/5);
+  eqChart = new Chart(document.getElementById('eqChart'), {
+    type: 'line',
+    data: { labels: labels, datasets: [
+      { label:'CO₂e/枚 (g)', data:dataAdj, borderColor:'#378ADD', backgroundColor:'rgba(55,138,221,0.07)', fill:true, tension:0.3, pointRadius:2, borderWidth:2 },
+      { label:'現在の設定', data:labels.map(function(_,i){return i===curIdx?dataAdj[i]:null;}),
+        borderColor:'#D85A30', backgroundColor:'#D85A30', pointRadius:8, pointHoverRadius:10, showLine:false, pointStyle:'circle' }
+    ]},
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false}, tooltip:{callbacks:{label:function(ctx){return ' '+ctx.parsed.y.toFixed(2)+' g-CO₂e/枚';}}} },
+      scales: {
+        x: { title:{display:true,text:'長時間プロセス装置の割合',font:{size:12}}, grid:{color:'rgba(128,128,128,0.12)'} },
+        y: { title:{display:true,text:'g-CO₂e / 枚',font:{size:12}}, beginAtZero:false, grid:{color:'rgba(128,128,128,0.12)'} }
+      }
+    }
+  });
+
+  var lc  = base*(longPct/100)*longPow*longTime/(refWeight>0?refWeight:1);
+  var sc  = base*((100-longPct)/100)*shortPow*shortTime/(refWeight>0?refWeight:1);
+  var lc2 = base*((100-longPct)/100)*longPow*longTime/(refWeight>0?refWeight:1);
+  var sc2 = base*(longPct/100)*shortPow*shortTime/(refWeight>0?refWeight:1);
+  contribChart = new Chart(document.getElementById('contribChart'), {
+    type: 'bar',
+    data: {
+      labels: ['現在 (長'+Math.round(longPct)+'%)', '比率逆転 (長'+Math.round(100-longPct)+'%)'],
+      datasets: [
+        { label:'長時間装置の寄与', data:[parseFloat(lc.toFixed(3)),parseFloat(lc2.toFixed(3))], backgroundColor:'#EF9F27', borderWidth:0, borderRadius:3 },
+        { label:'短時間装置の寄与', data:[parseFloat(sc.toFixed(3)),parseFloat(sc2.toFixed(3))], backgroundColor:'#378ADD', borderWidth:0, borderRadius:3 }
+      ]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false}, tooltip:{callbacks:{label:function(ctx){return ' '+ctx.dataset.label+': '+ctx.parsed.y.toFixed(2)+' g-CO₂e/枚';}}} },
+      scales: {
+        x: { stacked:true, grid:{display:false} },
+        y: { stacked:true, title:{display:true,text:'g-CO₂e / 枚',font:{size:12}}, grid:{color:'rgba(128,128,128,0.12)'} }
+      }
+    }
+  });
+  updateEquip();
+}
+
+calc();
+</script>
+</body>
+</html>
